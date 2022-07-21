@@ -13,6 +13,11 @@ if(RTREE_TEST)
   add_subdirectory(test)
 endif()
 
+option(RTREE_FUZZ OFF)
+if(RTREE_FUZZ)
+  add_subdirectory(fuzz)
+endif()
+
 set(SRC_FILE ${CMAKE_BINARY_DIR}/compile_commands.json)
 set(DST_FILE ${CMAKE_SOURCE_DIR}/compile_commands.json)
 if(EXISTS ${DST_FILE})
