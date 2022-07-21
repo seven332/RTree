@@ -16,7 +16,9 @@ template<
 class RTree {
  public:
     RTree();
-    RTree(const RTree& other);
+    RTree(const RTree& other) = delete;
+    RTree(RTree&& other) = delete;
+
     virtual ~RTree();
 
     /**
@@ -142,7 +144,6 @@ class RTree {
     void RemoveAllRec(Node* node);
     void Reset();
     void CountRec(Node* node, std::size_t& count);
-    void CopyRec(Node* current, Node* other);
 
     static_assert(std::numeric_limits<Scalar>::is_iec559, "'Scalar' accepts floating-point types only");
     static_assert(Dimensions > 0, "Dimensions must be greater than 0");
@@ -168,12 +169,6 @@ class RTree {
 RTREE_TEMPLATE
 RTREE_TYPE::RTree() {
     root_ = AllocNode();
-}
-
-RTREE_TEMPLATE
-RTREE_TYPE::RTree(const RTree& other) {
-    root_ = AllocNode();
-    CopyRec(root_, other.root_);
 }
 
 RTREE_TEMPLATE
@@ -248,31 +243,6 @@ void RTREE_TYPE::CountRec(Node* node, std::size_t& count) {
         }
     } else {  // A leaf node
         count += node->count;
-    }
-}
-
-RTREE_TEMPLATE
-void RTREE_TYPE::CopyRec(Node* current, Node* other) {
-    current->level = other->level;
-    current->count = other->count;
-
-    if (IsInternalNode(current)) {  // not a leaf node
-        for (std::uint8_t index = 0; index < current->count; ++index) {
-            Branch& currentBranch = current->branches[index];
-            const Branch& otherBranch = other->branches[index];
-            currentBranch.rect.min = otherBranch.rect.min;
-            currentBranch.rect.max = otherBranch.rect.max;
-            currentBranch.child = AllocNode();
-            CopyRec(currentBranch.child, otherBranch.child);
-        }
-    } else {  // A leaf node
-        for (std::uint8_t index = 0; index < current->count; ++index) {
-            Branch& currentBranch = current->branches[index];
-            const Branch& otherBranch = other->branches[index];
-            currentBranch.rect.min = otherBranch.rect.min;
-            currentBranch.rect.max = otherBranch.rect.max;
-            currentBranch.data = otherBranch.data;
-        }
     }
 }
 

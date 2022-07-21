@@ -36,10 +36,6 @@ class RTreeTest {
         assert(data_.size() == tree_.Count());
     }
 
-    void Copy() {
-        hippo::RTree<int, float, 2> copy(tree_);
-    }
-
     static bool Overlap(const Rect& rectA, const Rect& rectB) {
         float l = std::max(rectA.l, rectB.l);
         float r = std::min(rectA.r, rectB.r);
