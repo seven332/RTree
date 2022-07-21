@@ -8,8 +8,8 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 add_library(rtree INTERFACE)
 target_include_directories(rtree INTERFACE include)
 
-option(RTREE_TESTS OFF)
-if(RTREE_TESTS)
+option(RTREE_TEST OFF)
+if(RTREE_TEST)
   add_subdirectory(test)
 endif()
 

@@ -6,7 +6,7 @@ BasedOnStyle: Google
 AccessModifierOffset: -3
 AlignAfterOpenBracket: BlockIndent
 AlignArrayOfStructures: Left
-AlignConsecutiveAssignments: AcrossComments
+AlignConsecutiveAssignments: None
 AlignConsecutiveBitFields: AcrossComments
 AlignConsecutiveDeclarations: None
 AlignConsecutiveMacros: AcrossComments
