@@ -121,7 +121,7 @@ class RTree {
     Rect NodeCover(Node* node);
     bool AddBranch(const Branch& branch, Node* node, Node** newNode);
     void DisconnectBranch(Node* node, std::uint8_t index);
-    std::size_t PickBranch(const Rect& rect, Node* node);
+    std::uint8_t PickBranch(const Rect& rect, Node* node);
     Rect CombineRect(const Rect& rectA, const Rect& rectB);
     void SplitNode(Node* node, const Branch& branch, Node** newNode);
     Scalar CalcRectVolume(const Rect& rect);
@@ -137,7 +137,8 @@ class RTree {
     void FreeListNode(ListNode* listNode);
     bool Overlap(const Rect& rectA, const Rect& rectB) const;
     void ReInsert(Node* node, ListNode** listNode);
-    bool Search(Node* node, const Rect& rect, int& foundCount, const std::function<bool(const Data&)>& callback) const;
+    bool Search(Node* node, const Rect& rect, std::size_t& foundCount, const std::function<bool(const Data&)>& callback)
+        const;
     void RemoveAllRec(Node* node);
     void Reset();
     void CountRec(Node* node, std::size_t& count);
@@ -226,7 +227,7 @@ std::size_t RTREE_TYPE::Search(
 
     // NOTE: May want to return search result another way, perhaps returning the number of found elements here.
 
-    int foundCount = 0;
+    std::size_t foundCount = 0;
     Search(root_, rect, foundCount, callback);
 
     return foundCount;
@@ -242,7 +243,7 @@ std::size_t RTREE_TYPE::Count() {
 RTREE_TEMPLATE
 void RTREE_TYPE::CountRec(Node* node, std::size_t& count) {
     if (IsInternalNode(node)) {  // not a leaf node
-        for (int index = 0; index < node->count; ++index) {
+        for (std::uint8_t index = 0; index < node->count; ++index) {
             CountRec(node->branches[index].child, count);
         }
     } else {  // A leaf node
@@ -255,19 +256,21 @@ void RTREE_TYPE::CopyRec(Node* current, Node* other) {
     current->level = other->level;
     current->count = other->count;
 
-    if (current->IsInternalNode()) {  // not a leaf node
+    if (IsInternalNode(current)) {  // not a leaf node
         for (std::uint8_t index = 0; index < current->count; ++index) {
-            const Branch& currentBranch = current->branches[index];
+            Branch& currentBranch = current->branches[index];
             const Branch& otherBranch = other->branches[index];
-            currentBranch.rect = otherBranch.rect;
+            currentBranch.rect.min = otherBranch.rect.min;
+            currentBranch.rect.max = otherBranch.rect.max;
             currentBranch.child = AllocNode();
             CopyRec(currentBranch.child, otherBranch.child);
         }
     } else {  // A leaf node
         for (std::uint8_t index = 0; index < current->count; ++index) {
-            const Branch& currentBranch = current->branches[index];
+            Branch& currentBranch = current->branches[index];
             const Branch& otherBranch = other->branches[index];
-            currentBranch.rect = otherBranch.rect;
+            currentBranch.rect.min = otherBranch.rect.min;
+            currentBranch.rect.max = otherBranch.rect.max;
             currentBranch.data = otherBranch.data;
         }
     }
@@ -343,7 +346,7 @@ bool RTREE_TYPE::InsertRectRec(const Branch& branch, Node* node, Node** newNode,
         Node* otherNode;
 
         // find the optimal branch for this record
-        std::size_t index = PickBranch(branch.rect, node);
+        std::uint8_t index = PickBranch(branch.rect, node);
 
         // recursively insert this record into the picked branch
         bool childWasSplit = InsertRectRec(branch, node->branches[index].child, &otherNode, level);
@@ -474,11 +477,11 @@ void RTREE_TYPE::DisconnectBranch(Node* node, std::uint8_t index) {
 // In case of a tie, pick the one which was smaller before, to get
 // the best resolution when searching.
 RTREE_TEMPLATE
-std::size_t RTREE_TYPE::PickBranch(const Rect& rect, Node* node) {
+std::uint8_t RTREE_TYPE::PickBranch(const Rect& rect, Node* node) {
     assert(node);
     assert(node->count > 0);
 
-    std::size_t best;
+    std::uint8_t best;
     Scalar bestArea;
     Scalar bestIncrease;
 
@@ -578,7 +581,7 @@ void RTREE_TYPE::GetBranches(Node* node, const Branch& branch, PartitionInfo* in
     assert(node->count == MaxNodeCount);
 
     // Load the branch buffer
-    for (int index = 0; index < MaxNodeCount; ++index) {
+    for (std::uint8_t index = 0; index < MaxNodeCount; ++index) {
         info->branches[index] = node->branches[index];
     }
     info->branches[MaxNodeCount] = branch;
@@ -586,7 +589,7 @@ void RTREE_TYPE::GetBranches(Node* node, const Branch& branch, PartitionInfo* in
 
     // Calculate rect containing all in the set
     info->coverSplit = info->branches[0].rect;
-    for (int index = 1; index < MaxNodeCount + 1; ++index) {
+    for (std::uint8_t index = 1; index < MaxNodeCount + 1; ++index) {
         info->coverSplit = CombineRect(info->coverSplit, info->branches[index].rect);
     }
 }
@@ -616,7 +619,7 @@ void RTREE_TYPE::ChoosePartition(PartitionInfo* info, std::uint8_t minFill) {
         std::uint8_t chosen = 0;
         std::uint8_t betterGroup = 0;
 
-        for (int index = 0; index < info->total; ++index) {
+        for (std::uint8_t index = 0; index < info->total; ++index) {
             if (info->partitions[index] != kNotToken) {
                 continue;
             }
@@ -855,8 +858,12 @@ void RTREE_TYPE::ReInsert(Node* node, ListNode** listNode) {
 
 // Search in an index tree or subtree for all data rectangles that overlap the argument rectangle.
 RTREE_TEMPLATE
-bool RTREE_TYPE::Search(Node* node, const Rect& rect, int& foundCount, const std::function<bool(const Data&)>& callback)
-    const {
+bool RTREE_TYPE::Search(
+    Node* node,
+    const Rect& rect,
+    std::size_t& foundCount,
+    const std::function<bool(const Data&)>& callback
+) const {
     assert(node);
     assert(node->level >= 0);
 
