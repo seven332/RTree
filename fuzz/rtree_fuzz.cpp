@@ -4,8 +4,12 @@
 
 #include "rtree/rtree.h"
 
+struct Point {
+    float x, y;
+};
+
 struct Rect {
-    float l, r, b, t;
+    float l, t, r, b;
 };
 
 class RTreeTest {
@@ -44,6 +48,34 @@ class RTreeTest {
         return l < r && t < b;
     }
 
+    static bool Overlap(const Point& point, const Rect& rect) {
+        return point.x >= rect.l && point.x < rect.r && point.y >= rect.t && point.y < rect.b;
+    }
+
+    void Search(const Point& point) {
+        std::vector<int> dResult;
+        for (auto& it : data_) {
+            if (Overlap(point, it.first)) {
+                dResult.push_back(it.second);
+            }
+        }
+        std::sort(dResult.begin(), dResult.end());
+
+        std::vector<int> tResult;
+        tree_.Search(
+            [&point](std::array<float, 2> min, std::array<float, 2> max) {
+                return Overlap(point, Rect {min[0], min[1], max[0], max[1]});
+            },
+            [&tResult](const int& data) {
+                tResult.push_back(data);
+                return true;
+            }
+        );
+        std::sort(tResult.begin(), tResult.end());
+
+        assert(dResult == tResult);
+    }
+
     void Search(const Rect& rect) {
         std::vector<int> dResult;
         for (auto& it : data_) {
@@ -77,6 +109,16 @@ class RTreeTest {
     std::vector<std::pair<Rect, int>> data_;
     hippo::RTree<int, float, 2> tree_;
 };
+
+static bool NextBool(const std::uint8_t** data, std::size_t* size, bool* value) {
+    if (*size == 0) {
+        return false;
+    }
+    *value = *reinterpret_cast<const std::int8_t*>(*data) > 0;
+    (*data)++;
+    (*size)--;
+    return true;
+}
 
 static bool NextChar(const std::uint8_t** data, std::size_t* size, char* value) {
     if (*size == 0) {
@@ -116,6 +158,10 @@ static bool NextFloat(const std::uint8_t** data, std::size_t* size, float* value
     }
 }
 
+static bool NextPoint(const std::uint8_t** data, std::size_t* size, Point* value) {
+    return NextFloat(data, size, &value->x) && NextFloat(data, size, &value->y);
+}
+
 static bool NextRect(const std::uint8_t** data, std::size_t* size, Rect* value) {
     if (!NextFloat(data, size, &value->l) || !NextFloat(data, size, &value->r) || !NextFloat(data, size, &value->b) ||
         !NextFloat(data, size, &value->t)) {
@@ -141,10 +187,21 @@ static bool NextRect(const std::uint8_t** data, std::size_t* size, Rect* value) 
 extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size) {
     RTreeTest test;
 
-    // Get the rect to search
-    Rect searchRect {};
-    if (!NextRect(&data, &size, &searchRect)) {
+    // Get the point or rect to search
+    Point targetPoint {};
+    Rect targetRect {};
+    bool searchPoint = false;
+    if (!NextBool(&data, &size, &searchPoint)) {
         return 0;
+    }
+    if (searchPoint) {
+        if (!NextPoint(&data, &size, &targetPoint)) {
+            return 0;
+        }
+    } else {
+        if (!NextRect(&data, &size, &targetRect)) {
+            return 0;
+        }
     }
 
     // Modify the tree
@@ -183,7 +240,11 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
         }
     }
 
-    test.Search(searchRect);
+    if (searchPoint) {
+        test.Search(targetPoint);
+    } else {
+        test.Search(targetRect);
+    }
 
     test.RemoveAll();
 

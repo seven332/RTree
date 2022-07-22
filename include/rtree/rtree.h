@@ -43,6 +43,16 @@ class RTree {
     );
 
     /**
+     * @brief Find all with custom overlap.
+     * @param overlap If the sub rect is overlapped, the rect must be overlapped.
+     */
+    std::size_t Search(
+        const std::function<bool(const std::array<Scalar, Dimensions>& min, const std::array<Scalar, Dimensions>& max)>&
+            overlap,
+        const std::function<bool(const Data&)>& callback
+    );
+
+    /**
      * @brief Remove all entries from tree.
      */
     void RemoveAll();
@@ -132,6 +142,13 @@ class RTree {
     void ReInsert(Node* node, ListNode** listNode);
     bool Search(Node* node, const Rect& rect, std::size_t& foundCount, const std::function<bool(const Data&)>& callback)
         const;
+    bool Search(
+        Node* node,
+        const std::function<bool(const std::array<Scalar, Dimensions>& min, const std::array<Scalar, Dimensions>& max)>&
+            overlap,
+        std::size_t& foundCount,
+        const std::function<bool(const Data&)>& callback
+    ) const;
     void RemoveAllRec(Node* node);
     void Reset();
     void CountRec(Node* node, std::size_t& count);
@@ -216,6 +233,17 @@ std::size_t RTREE_TYPE::Search(
     std::size_t foundCount = 0;
     Search(root_, rect, foundCount, callback);
 
+    return foundCount;
+}
+
+RTREE_TEMPLATE
+std::size_t RTREE_TYPE::Search(
+    const std::function<bool(const std::array<Scalar, Dimensions>& min, const std::array<Scalar, Dimensions>& max)>&
+        overlap,
+    const std::function<bool(const Data&)>& callback
+) {
+    std::size_t foundCount = 0;
+    Search(root_, overlap, foundCount, callback);
     return foundCount;
 }
 
@@ -832,6 +860,42 @@ bool RTREE_TYPE::Search(
     } else {  // This is a leaf node
         for (std::uint8_t index = 0; index < node->count; ++index) {
             if (Overlap(rect, node->branches[index].rect)) {
+                const Data& data = node->branches[index].data;
+                ++foundCount;
+
+                if (callback && !callback(data)) {
+                    return false;  // Don't continue searching
+                }
+            }
+        }
+    }
+
+    return true;  // Continue searching
+}
+
+RTREE_TEMPLATE
+bool RTREE_TYPE::Search(
+    Node* node,
+    const std::function<bool(const std::array<Scalar, Dimensions>& min, const std::array<Scalar, Dimensions>& max)>&
+        overlap,
+    std::size_t& foundCount,
+    const std::function<bool(const Data&)>& callback
+) const {
+    assert(node);
+    assert(node->level >= 0);
+
+    if (IsInternalNode(node)) {  // This is an internal node in the tree
+        for (std::uint8_t index = 0; index < node->count; ++index) {
+            if (overlap(node->branches[index].rect.min, node->branches[index].rect.max)) {
+                if (!Search(node->branches[index].child, overlap, foundCount, callback)) {
+                    // The callback indicated to stop searching
+                    return false;
+                }
+            }
+        }
+    } else {  // This is a leaf node
+        for (std::uint8_t index = 0; index < node->count; ++index) {
+            if (overlap(node->branches[index].rect.min, node->branches[index].rect.max)) {
                 const Data& data = node->branches[index].data;
                 ++foundCount;
 
