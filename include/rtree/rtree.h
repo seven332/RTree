@@ -95,19 +95,10 @@ class RTree {
     // Variables for finding a split partition.
     struct PartitionInfo {
         std::array<std::uint8_t, MaxNodeCount + 1> partitions;
-        // TODO: MaxNodeCount + 1
-        std::uint8_t total;
-        // TODO: MinNodeCount
-        std::uint8_t minFill;
         std::array<std::uint8_t, 2> counts;
-
         std::array<Rect, 2> covers;
         std::array<Scalar, 2> areas;
-
         std::array<Branch, MaxNodeCount + 1> branches;
-        std::uint8_t branchCount;
-
-        Rect coverSplit;
     };
 
     Node* root_;
@@ -128,9 +119,9 @@ class RTree {
     void SplitNode(Node* node, const Branch& branch, Node** newNode);
     Scalar CalcRectVolume(const Rect& rect);
     void GetBranches(Node* node, const Branch& branch, PartitionInfo* info);
-    void ChoosePartition(PartitionInfo* info, std::uint8_t minFill);
+    void ChoosePartition(PartitionInfo* info);
     void LoadNodes(Node* nodeA, Node* nodeB, PartitionInfo* info);
-    void InitPartitionInfo(PartitionInfo* info, std::uint8_t maxRects, std::uint8_t minFill);
+    void InitPartitionInfo(PartitionInfo* info);
     void PickSeeds(PartitionInfo* info);
     void Classify(std::uint8_t index, std::uint8_t group, PartitionInfo* info);
     bool RemoveRect(const Rect& rect, const Data& data, Node** root);
@@ -509,7 +500,7 @@ void RTREE_TYPE::SplitNode(Node* node, const Branch& branch, Node** newNode) {
     GetBranches(node, branch, &info);
 
     // Find partition
-    ChoosePartition(&info, MinNodeCount);
+    ChoosePartition(&info);
 
     // Create a new node to hold (about) half of the branches
     *newNode = AllocNode();
@@ -519,7 +510,7 @@ void RTREE_TYPE::SplitNode(Node* node, const Branch& branch, Node** newNode) {
     node->count = 0;
     LoadNodes(node, *newNode, &info);
 
-    assert((node->count + (*newNode)->count) == info.total);
+    assert((node->count + (*newNode)->count) == MaxNodeCount + 1);
 }
 
 // The exact volume of the bounding sphere for the given Rect
@@ -555,13 +546,6 @@ void RTREE_TYPE::GetBranches(Node* node, const Branch& branch, PartitionInfo* in
         info->branches[index] = node->branches[index];
     }
     info->branches[MaxNodeCount] = branch;
-    info->branchCount = MaxNodeCount + 1;
-
-    // Calculate rect containing all in the set
-    info->coverSplit = info->branches[0].rect;
-    for (std::uint8_t index = 1; index < MaxNodeCount + 1; ++index) {
-        info->coverSplit = CombineRect(info->coverSplit, info->branches[index].rect);
-    }
 }
 
 // Method #0 for choosing a partition:
@@ -576,20 +560,21 @@ void RTREE_TYPE::GetBranches(Node* node, const Branch& branch, PartitionInfo* in
 // fill requirement) then other group gets the rest.
 // These last are the ones that can go in either group most easily.
 RTREE_TEMPLATE
-void RTREE_TYPE::ChoosePartition(PartitionInfo* info, std::uint8_t minFill) {
+void RTREE_TYPE::ChoosePartition(PartitionInfo* info) {
     assert(info);
 
-    InitPartitionInfo(info, info->branchCount, minFill);
+    InitPartitionInfo(info);
     PickSeeds(info);
 
-    while (((info->counts[0] + info->counts[1]) < info->total) && (info->counts[0] < (info->total - info->minFill)) &&
-           (info->counts[1] < (info->total - info->minFill))) {
+    while (((info->counts[0] + info->counts[1]) < MaxNodeCount + 1) &&
+           (info->counts[0] < (MaxNodeCount + 1 - MinNodeCount)) &&
+           (info->counts[1] < (MaxNodeCount + 1 - MinNodeCount))) {
         bool first = true;
         Scalar biggestDiff = 0;
         std::uint8_t chosen = 0;
         std::uint8_t betterGroup = 0;
 
-        for (std::uint8_t index = 0; index < info->total; ++index) {
+        for (std::uint8_t index = 0; index < MaxNodeCount + 1; ++index) {
             if (info->partitions[index] != kNotToken) {
                 continue;
             }
@@ -625,17 +610,17 @@ void RTREE_TYPE::ChoosePartition(PartitionInfo* info, std::uint8_t minFill) {
     }
 
     // If one group too full, put remaining rects in the other
-    if ((info->counts[0] + info->counts[1]) < info->total) {
-        std::uint8_t group = info->counts[0] >= info->total - info->minFill ? 1 : 0;
-        for (std::uint8_t index = 0; index < info->total; ++index) {
+    if ((info->counts[0] + info->counts[1]) < MaxNodeCount + 1) {
+        std::uint8_t group = info->counts[0] >= MaxNodeCount + 1 - MinNodeCount ? 1 : 0;
+        for (std::uint8_t index = 0; index < MaxNodeCount + 1; ++index) {
             if (info->partitions[index] == kNotToken) {
                 Classify(index, group, info);
             }
         }
     }
 
-    assert((info->counts[0] + info->counts[1]) == info->total);
-    assert((info->counts[0] >= info->minFill) && (info->counts[1] >= info->minFill));
+    assert((info->counts[0] + info->counts[1]) == MaxNodeCount + 1);
+    assert((info->counts[0] >= MinNodeCount) && (info->counts[1] >= MinNodeCount));
 }
 
 // Copy branches from the buffer into two nodes according to the partition.
@@ -645,7 +630,7 @@ void RTREE_TYPE::LoadNodes(Node* nodeA, Node* nodeB, PartitionInfo* info) {
     assert(nodeB);
     assert(info);
 
-    for (std::uint8_t index = 0; index < info->total; ++index) {
+    for (std::uint8_t index = 0; index < MaxNodeCount + 1; ++index) {
         assert(info->partitions[index] == 0 || info->partitions[index] == 1);
 
         Node* targetNode = info->partitions[index] == 0 ? nodeA : nodeB;
@@ -658,14 +643,12 @@ void RTREE_TYPE::LoadNodes(Node* nodeA, Node* nodeB, PartitionInfo* info) {
 
 // Initialize a PartitionInfo structure.
 RTREE_TEMPLATE
-void RTREE_TYPE::InitPartitionInfo(PartitionInfo* info, std::uint8_t maxRects, std::uint8_t minFill) {
+void RTREE_TYPE::InitPartitionInfo(PartitionInfo* info) {
     assert(info);
 
     info->counts[0] = info->counts[1] = 0;
     info->areas[0] = info->areas[1] = 0;
-    info->total = maxRects;
-    info->minFill = minFill;
-    for (std::uint8_t index = 0; index < maxRects; ++index) {
+    for (std::uint8_t index = 0; index < MaxNodeCount + 1; ++index) {
         info->partitions[index] = kNotToken;
     }
 }
@@ -676,14 +659,14 @@ void RTREE_TYPE::PickSeeds(PartitionInfo* info) {
     std::uint8_t seed1 = 0;
     std::array<Scalar, MaxNodeCount + 1> areas;
 
-    for (std::uint8_t index = 0; index < info->total; ++index) {
+    for (std::uint8_t index = 0; index < MaxNodeCount + 1; ++index) {
         areas[index] = CalcRectVolume(info->branches[index].rect);
     }
 
     bool first = true;
     Scalar worst = 0;
-    for (std::uint8_t indexA = 0; indexA < info->total - 1; ++indexA) {
-        for (std::uint8_t indexB = indexA + 1; indexB < info->total; ++indexB) {
+    for (std::uint8_t indexA = 0; indexA < MaxNodeCount; ++indexA) {
+        for (std::uint8_t indexB = indexA + 1; indexB < MaxNodeCount + 1; ++indexB) {
             Rect oneRect = CombineRect(info->branches[indexA].rect, info->branches[indexB].rect);
             Scalar waste = CalcRectVolume(oneRect) - areas[indexA] - areas[indexB];
             if (first || waste > worst) {
