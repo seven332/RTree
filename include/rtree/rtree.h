@@ -30,8 +30,9 @@ class RTree {
 
     /**
      * @brief Remove the data from the tree.
+     * @return true if the data was removed, false if it was not found.
      */
-    void Remove(const std::array<Scalar, Dimensions>& min, const std::array<Scalar, Dimensions>& max, const Data& data);
+    bool Remove(const std::array<Scalar, Dimensions>& min, const std::array<Scalar, Dimensions>& max, const Data& data);
 
     /**
      * @brief Find all within search rectangle.
@@ -202,7 +203,7 @@ void RTREE_TYPE::Insert(
 }
 
 RTREE_TEMPLATE
-void RTREE_TYPE::Remove(
+bool RTREE_TYPE::Remove(
     const std::array<Scalar, Dimensions>& min,
     const std::array<Scalar, Dimensions>& max,
     const Data& data
@@ -213,7 +214,7 @@ void RTREE_TYPE::Remove(
     rect.min = min;
     rect.max = max;
 
-    RemoveRect(rect, data, &root_);
+    return RemoveRect(rect, data, &root_);
 }
 
 RTREE_TEMPLATE
@@ -734,7 +735,7 @@ void RTREE_TYPE::Classify(std::uint8_t index, std::uint8_t group, PartitionInfo*
 
 // Delete a data rectangle from an index structure.
 // Pass in a pointer to a Rect, the tid of the record, ptr to root node.
-// Returns 1 if record not found, 0 if success.
+// Returns false if record not found, true if success.
 // RemoveRect provides for eliminating the root.
 RTREE_TEMPLATE
 bool RTREE_TYPE::RemoveRect(const Rect& rect, const Data& data, Node** root) {
@@ -743,7 +744,7 @@ bool RTREE_TYPE::RemoveRect(const Rect& rect, const Data& data, Node** root) {
 
     ListNode* reInsertList = nullptr;
 
-    if (!RemoveRectRec(rect, data, *root, &reInsertList)) {
+    if (RemoveRectRec(rect, data, *root, &reInsertList)) {
         // Found and deleted a data item
         // Reinsert any branches from eliminated nodes
         while (reInsertList) {
@@ -770,16 +771,16 @@ bool RTREE_TYPE::RemoveRect(const Rect& rect, const Data& data, Node** root) {
             FreeNode(*root);
             *root = tempNode;
         }
-        return false;
-    } else {
         return true;
+    } else {
+        return false;
     }
 }
 
 // Delete a rectangle from non-root part of an index structure.
 // Called by RemoveRect.  Descends tree recursively,
 // merges branches on the way back up.
-// Returns 1 if record not found, 0 if success.
+// Returns false if record not found, true if success.
 RTREE_TEMPLATE
 bool RTREE_TYPE::RemoveRectRec(const Rect& rect, const Data& data, Node* node, ListNode** listNode) {
     assert(node);
@@ -789,7 +790,7 @@ bool RTREE_TYPE::RemoveRectRec(const Rect& rect, const Data& data, Node* node, L
     if (IsInternalNode(node)) {  // not a leaf node
         for (std::uint8_t index = 0; index < node->count; ++index) {
             if (Overlap(rect, node->branches[index].rect)) {
-                if (!RemoveRectRec(rect, data, node->branches[index].child, listNode)) {
+                if (RemoveRectRec(rect, data, node->branches[index].child, listNode)) {
                     if (node->branches[index].child->count >= MinNodeCount) {
                         // child removed, just resize parent rect
                         node->branches[index].rect = NodeCover(node->branches[index].child);
@@ -798,19 +799,19 @@ bool RTREE_TYPE::RemoveRectRec(const Rect& rect, const Data& data, Node* node, L
                         ReInsert(node->branches[index].child, listNode);
                         DisconnectBranch(node, index);  // Must return after this call as count has changed
                     }
-                    return false;
+                    return true;
                 }
             }
         }
-        return true;
+        return false;
     } else {  // A leaf node
         for (std::uint8_t index = 0; index < node->count; ++index) {
             if (node->branches[index].data == data) {
                 DisconnectBranch(node, index);  // Must return after this call as count has changed
-                return false;
+                return true;
             }
         }
-        return true;
+        return false;
     }
 }
 

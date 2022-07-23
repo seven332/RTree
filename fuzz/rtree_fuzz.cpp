@@ -35,7 +35,8 @@ class RTreeTest {
 
         std::array<float, 2> min {rect.l, rect.t};
         std::array<float, 2> max {rect.r, rect.b};
-        tree_.Remove(min, max, data);
+        auto result = tree_.Remove(min, max, data);
+        assert(result);
 
         assert(data_.size() == tree_.Count());
     }
