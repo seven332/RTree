@@ -41,7 +41,7 @@ class RTree {
         const std::array<Scalar, Dimensions>& min,
         const std::array<Scalar, Dimensions>& max,
         const std::function<bool(const Data&)>& callback
-    );
+    ) const;
 
     /**
      * @brief Find all with custom overlap.
@@ -51,7 +51,7 @@ class RTree {
         const std::function<bool(const std::array<Scalar, Dimensions>& min, const std::array<Scalar, Dimensions>& max)>&
             overlap,
         const std::function<bool(const Data&)>& callback
-    );
+    ) const;
 
     /**
      * @brief Remove all entries from tree.
@@ -61,7 +61,7 @@ class RTree {
     /**
      * @brief Count the data elements in this container. This is slow since no internal counter is maintained.
      */
-    std::size_t Count();
+    [[nodiscard]] std::size_t Count() const;
 
  private:
     static constexpr std::array<float, 21> kUnitSphereVolumes = {
@@ -152,7 +152,7 @@ class RTree {
     ) const;
     void RemoveAllRec(Node* node);
     void Reset();
-    void CountRec(Node* node, std::size_t& count);
+    void CountRec(Node* node, std::size_t& count) const;
 
     static_assert(std::numeric_limits<Scalar>::is_iec559, "'Scalar' accepts floating-point types only");
     static_assert(Dimensions > 0, "Dimensions must be greater than 0");
@@ -222,7 +222,7 @@ std::size_t RTREE_TYPE::Search(
     const std::array<Scalar, Dimensions>& min,
     const std::array<Scalar, Dimensions>& max,
     const std::function<bool(const Data&)>& callback
-) {
+) const {
     RTREE_ASSERT_RECT(min, max);
 
     Rect rect;
@@ -242,21 +242,21 @@ std::size_t RTREE_TYPE::Search(
     const std::function<bool(const std::array<Scalar, Dimensions>& min, const std::array<Scalar, Dimensions>& max)>&
         overlap,
     const std::function<bool(const Data&)>& callback
-) {
+) const {
     std::size_t foundCount = 0;
     Search(root_, overlap, foundCount, callback);
     return foundCount;
 }
 
 RTREE_TEMPLATE
-std::size_t RTREE_TYPE::Count() {
+std::size_t RTREE_TYPE::Count() const {
     std::size_t count = 0;
     CountRec(root_, count);
     return count;
 }
 
 RTREE_TEMPLATE
-void RTREE_TYPE::CountRec(Node* node, std::size_t& count) {
+void RTREE_TYPE::CountRec(Node* node, std::size_t& count) const {
     if (IsInternalNode(node)) {  // not a leaf node
         for (std::uint8_t index = 0; index < node->count; ++index) {
             CountRec(node->branches[index].child, count);
