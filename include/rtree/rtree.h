@@ -2,6 +2,7 @@
 
 #include <array>
 #include <cassert>
+#include <stack>
 
 namespace hippo {
 
@@ -97,12 +98,6 @@ class RTree {
         std::array<Branch, MaxNodeCount> branches;
     };
 
-    // A link list of nodes for reinsertion after a delete operation
-    struct ListNode {
-        ListNode* next;
-        Node* node;
-    };
-
     // Variables for finding a split partition.
     struct PartitionInfo {
         std::array<std::uint8_t, MaxNodeCount + 1> partitions;
@@ -113,6 +108,7 @@ class RTree {
     };
 
     Node* root_;
+    std::stack<Node*> reInsertNodes_;
 
     static bool IsInternalNode(Node* node) {
         return node->level > 0;
@@ -136,11 +132,8 @@ class RTree {
     void PickSeeds(PartitionInfo* info);
     void Classify(std::uint8_t index, std::uint8_t group, PartitionInfo* info);
     bool RemoveRect(const Rect& rect, const Data& data, Node** root);
-    bool RemoveRectRec(const Rect& rect, const Data& data, Node* node, ListNode** listNode);
-    ListNode* AllocListNode();
-    void FreeListNode(ListNode* listNode);
+    bool RemoveRectRec(const Rect& rect, const Data& data, Node* node);
     bool Overlap(const Rect& rectA, const Rect& rectB) const;
-    void ReInsert(Node* node, ListNode** listNode);
     bool Search(Node* node, const Rect& rect, std::size_t& foundCount, const std::function<bool(const Data&)>& callback)
         const;
     bool Search(
@@ -302,18 +295,6 @@ RTREE_TEMPLATE
 void RTREE_TYPE::FreeNode(Node* node) {
     // TODO: custom allocator
     delete node;
-}
-
-RTREE_TEMPLATE
-typename RTREE_TYPE::ListNode* RTREE_TYPE::AllocListNode() {
-    // TODO: custom allocator
-    return new ListNode;
-}
-
-RTREE_TEMPLATE
-void RTREE_TYPE::FreeListNode(ListNode* listNode) {
-    // TODO: custom allocator
-    delete listNode;
 }
 
 // Inserts a new data rectangle into the index structure.
@@ -742,24 +723,18 @@ bool RTREE_TYPE::RemoveRect(const Rect& rect, const Data& data, Node** root) {
     assert(root);
     assert(*root);
 
-    ListNode* reInsertList = nullptr;
-
-    if (RemoveRectRec(rect, data, *root, &reInsertList)) {
+    if (RemoveRectRec(rect, data, *root)) {
         // Found and deleted a data item
         // Reinsert any branches from eliminated nodes
-        while (reInsertList) {
-            Node* tempNode = reInsertList->node;
+        while (!reInsertNodes_.empty()) {
+            Node* reInsertNode = reInsertNodes_.top();
+            reInsertNodes_.pop();
 
-            for (std::uint8_t index = 0; index < tempNode->count; ++index) {
-                // TODO go over this code. should I use (tempNode->m_level - 1)?
-                InsertRect(tempNode->branches[index], root, tempNode->level);
+            for (std::uint8_t index = 0; index < reInsertNode->count; ++index) {
+                InsertRect(reInsertNode->branches[index], root, reInsertNode->level);
             }
 
-            ListNode* remLNode = reInsertList;
-            reInsertList = reInsertList->next;
-
-            FreeNode(remLNode->node);
-            FreeListNode(remLNode);
+            FreeNode(reInsertNode);
         }
 
         // Check for redundant root (not leaf, 1 child) and eliminate TODO replace
@@ -782,21 +757,20 @@ bool RTREE_TYPE::RemoveRect(const Rect& rect, const Data& data, Node** root) {
 // merges branches on the way back up.
 // Returns false if record not found, true if success.
 RTREE_TEMPLATE
-bool RTREE_TYPE::RemoveRectRec(const Rect& rect, const Data& data, Node* node, ListNode** listNode) {
+bool RTREE_TYPE::RemoveRectRec(const Rect& rect, const Data& data, Node* node) {
     assert(node);
-    assert(listNode);
     assert(node->level >= 0);
 
     if (IsInternalNode(node)) {  // not a leaf node
         for (std::uint8_t index = 0; index < node->count; ++index) {
             if (Overlap(rect, node->branches[index].rect)) {
-                if (RemoveRectRec(rect, data, node->branches[index].child, listNode)) {
+                if (RemoveRectRec(rect, data, node->branches[index].child)) {
                     if (node->branches[index].child->count >= MinNodeCount) {
                         // child removed, just resize parent rect
                         node->branches[index].rect = NodeCover(node->branches[index].child);
                     } else {
                         // child removed, not enough entries in node, eliminate node
-                        ReInsert(node->branches[index].child, listNode);
+                        reInsertNodes_.push(node->branches[index].child);
                         DisconnectBranch(node, index);  // Must return after this call as count has changed
                     }
                     return true;
@@ -824,18 +798,6 @@ bool RTREE_TYPE::Overlap(const Rect& rectA, const Rect& rectB) const {
         }
     }
     return true;
-}
-
-// Add a node to the reinsertion list.  All its branches will later
-// be reinserted into the index structure.
-RTREE_TEMPLATE
-void RTREE_TYPE::ReInsert(Node* node, ListNode** listNode) {
-    ListNode* newListNode;
-
-    newListNode = AllocListNode();
-    newListNode->node = node;
-    newListNode->next = *listNode;
-    *listNode = newListNode;
 }
 
 // Search in an index tree or subtree for all data rectangles that overlap the argument rectangle.
