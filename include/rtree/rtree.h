@@ -665,7 +665,7 @@ void RTREE_TYPE::LoadNodes(Node* nodeA, Node* nodeB, PartitionInfo* info) {
         Node* targetNode = info->partitions[index] == 0 ? nodeA : nodeB;
 
         // It is assured that AddBranch here will not cause a node split.
-        bool nodeWasSplit = AddBranch(info->branches[index], targetNode, nullptr);
+        [[maybe_unused]] bool nodeWasSplit = AddBranch(info->branches[index], targetNode, nullptr);
         assert(!nodeWasSplit);
     }
 }
