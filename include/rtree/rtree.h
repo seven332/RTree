@@ -108,7 +108,6 @@ class RTree {
     };
 
     Node* root_;
-    std::stack<Node*> reInsertNodes_;
 
     static bool IsInternalNode(Node* node) {
         return node->level > 0;
@@ -132,7 +131,7 @@ class RTree {
     void PickSeeds(PartitionInfo* info);
     void Classify(std::uint8_t index, std::uint8_t group, PartitionInfo* info);
     bool RemoveRect(const Rect& rect, const Data& data, Node** root);
-    bool RemoveRectRec(const Rect& rect, const Data& data, Node* node);
+    bool RemoveRectRec(const Rect& rect, const Data& data, Node* node, std::stack<Node*>& reInsertNodes);
     bool Overlap(const Rect& rectA, const Rect& rectB) const;
     bool Search(Node* node, const Rect& rect, std::size_t& foundCount, const std::function<bool(const Data&)>& callback)
         const;
@@ -723,12 +722,14 @@ bool RTREE_TYPE::RemoveRect(const Rect& rect, const Data& data, Node** root) {
     assert(root);
     assert(*root);
 
-    if (RemoveRectRec(rect, data, *root)) {
+    std::stack<Node*> reInsertNodes;
+
+    if (RemoveRectRec(rect, data, *root, reInsertNodes)) {
         // Found and deleted a data item
         // Reinsert any branches from eliminated nodes
-        while (!reInsertNodes_.empty()) {
-            Node* reInsertNode = reInsertNodes_.top();
-            reInsertNodes_.pop();
+        while (!reInsertNodes.empty()) {
+            Node* reInsertNode = reInsertNodes.top();
+            reInsertNodes.pop();
 
             for (std::uint8_t index = 0; index < reInsertNode->count; ++index) {
                 InsertRect(reInsertNode->branches[index], root, reInsertNode->level);
@@ -757,20 +758,20 @@ bool RTREE_TYPE::RemoveRect(const Rect& rect, const Data& data, Node** root) {
 // merges branches on the way back up.
 // Returns false if record not found, true if success.
 RTREE_TEMPLATE
-bool RTREE_TYPE::RemoveRectRec(const Rect& rect, const Data& data, Node* node) {
+bool RTREE_TYPE::RemoveRectRec(const Rect& rect, const Data& data, Node* node, std::stack<Node*>& reInsertNodes) {
     assert(node);
     assert(node->level >= 0);
 
     if (IsInternalNode(node)) {  // not a leaf node
         for (std::uint8_t index = 0; index < node->count; ++index) {
             if (Overlap(rect, node->branches[index].rect)) {
-                if (RemoveRectRec(rect, data, node->branches[index].child)) {
+                if (RemoveRectRec(rect, data, node->branches[index].child, reInsertNodes)) {
                     if (node->branches[index].child->count >= MinNodeCount) {
                         // child removed, just resize parent rect
                         node->branches[index].rect = NodeCover(node->branches[index].child);
                     } else {
                         // child removed, not enough entries in node, eliminate node
-                        reInsertNodes_.push(node->branches[index].child);
+                        reInsertNodes.push(node->branches[index].child);
                         DisconnectBranch(node, index);  // Must return after this call as count has changed
                     }
                     return true;
