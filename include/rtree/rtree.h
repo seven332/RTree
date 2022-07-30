@@ -87,8 +87,8 @@ class RTree {
 
     struct Branch {
         Rect rect;
-        Data data;
-        Node* child;
+        Data data = Data();
+        Node* child = nullptr;
     };
 
     // Node for each branch level.
@@ -437,6 +437,10 @@ void RTREE_TYPE::DisconnectBranch(Node* node, std::uint8_t index) {
 
     // Remove element by swapping with the last element to prevent gaps in array
     node->branches[index] = node->branches[node->count - 1];
+
+    // Clear the last element
+    node->branches[node->count - 1].child = nullptr;
+    node->branches[node->count - 1].data = Data();
 
     --node->count;
 }
