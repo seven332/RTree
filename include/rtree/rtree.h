@@ -113,6 +113,10 @@ class RTree {
         return node->level > 0;
     }
 
+    static bool IsLeafNode(Node* node) {
+        return node->level == 0;
+    }
+
     Node* AllocNode();
     void FreeNode(Node* node);
     bool InsertRect(const Branch& branch, Node** root, std::size_t level);
@@ -438,8 +442,7 @@ void RTREE_TYPE::DisconnectBranch(Node* node, std::uint8_t index) {
     // Remove element by swapping with the last element to prevent gaps in array
     node->branches[index] = node->branches[node->count - 1];
 
-    // Clear the last element
-    node->branches[node->count - 1].child = nullptr;
+    // Clear the data of the last element
     node->branches[node->count - 1].data = Data();
 
     --node->count;
@@ -518,6 +521,13 @@ void RTREE_TYPE::SplitNode(Node* node, const Branch& branch, Node** newNode) {
     // Create a new node to hold (about) half of the branches
     *newNode = AllocNode();
     (*newNode)->level = node->level;
+
+    // Reset data if it's a leaf
+    if (IsLeafNode(node)) {
+        for (std::uint8_t index = 0; index < node->count; ++index) {
+            node->branches[index].data = Data();
+        }
+    }
 
     // Put branches from buffer into 2 nodes according to the chosen partition
     node->count = 0;
