@@ -87,7 +87,7 @@ class RTree {
 
     struct Branch {
         Rect rect;
-        Data data = Data();
+        Data data;
         Node* child = nullptr;
     };
 
