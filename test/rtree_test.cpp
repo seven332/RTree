@@ -45,4 +45,10 @@ TEST(RTreeTest, DoNotCopyTwiceAfterInsert) {
     }
 }
 
+TEST(RTreeTest, RemoveAllOnEmptyRTree) {
+    RTree<std::shared_ptr<int>, float, 2> tree;
+    tree.RemoveAll();
+    EXPECT_EQ(tree.Count(), 0);
+}
+
 }  // namespace hippo

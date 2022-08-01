@@ -265,6 +265,11 @@ void RTREE_TYPE::CountRec(Node* node, std::size_t& count) const {
 
 RTREE_TEMPLATE
 void RTREE_TYPE::RemoveAll() {
+    // Return if it has no node
+    if (root_->count == 0) {
+        return;
+    }
+
     // Delete all existing nodes
     Reset();
 
