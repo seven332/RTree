@@ -37,23 +37,13 @@ class RTree {
     bool Remove(const std::array<Scalar, Dimensions>& min, const std::array<Scalar, Dimensions>& max, const Data& data);
 
     /**
-     * @brief Find all within search rectangle.
+     * @brief Find all by the check.
+     * @tparam Overlap If the sub rect is overlapped, the rect must be overlapped.
+     * @param callback Return true to continue, false to stop.
+     * @return The count of found data.
      */
-    std::size_t Search(
-        const std::array<Scalar, Dimensions>& min,
-        const std::array<Scalar, Dimensions>& max,
-        const std::function<bool(const Data&)>& callback
-    ) const;
-
-    /**
-     * @brief Find all with custom overlap.
-     * @param overlap If the sub rect is overlapped, the rect must be overlapped.
-     */
-    std::size_t Search(
-        const std::function<bool(const std::array<Scalar, Dimensions>& min, const std::array<Scalar, Dimensions>& max)>&
-            overlap,
-        const std::function<bool(const Data&)>& callback
-    ) const;
+    template<class T, class Overlap>
+    std::size_t Search(const T& check, const std::function<bool(const Data&)>& callback) const;
 
     /**
      * @brief Remove all entries from tree.
@@ -138,15 +128,9 @@ class RTree {
     bool RemoveRect(const Rect& rect, const Data& data, Node** root);
     bool RemoveRectRec(const Rect& rect, const Data& data, Node* node, std::stack<Node*>& reInsertNodes);
     bool Overlap(const Rect& rectA, const Rect& rectB) const;
-    bool Search(Node* node, const Rect& rect, std::size_t& foundCount, const std::function<bool(const Data&)>& callback)
+    template<class T, class Overlap>
+    bool Search(Node* node, const T& check, std::size_t& foundCount, const std::function<bool(const Data&)>& callback)
         const;
-    bool Search(
-        Node* node,
-        const std::function<bool(const std::array<Scalar, Dimensions>& min, const std::array<Scalar, Dimensions>& max)>&
-            overlap,
-        std::size_t& foundCount,
-        const std::function<bool(const Data&)>& callback
-    ) const;
     void RemoveAllRec(Node* node);
     void Reset();
     void CountRec(Node* node, std::size_t& count) const;
@@ -215,33 +199,10 @@ bool RTREE_TYPE::Remove(
 }
 
 RTREE_TEMPLATE
-std::size_t RTREE_TYPE::Search(
-    const std::array<Scalar, Dimensions>& min,
-    const std::array<Scalar, Dimensions>& max,
-    const std::function<bool(const Data&)>& callback
-) const {
-    RTREE_ASSERT_RECT(min, max);
-
-    Rect rect;
-    rect.min = min;
-    rect.max = max;
-
-    // NOTE: May want to return search result another way, perhaps returning the number of found elements here.
-
+template<class T, class Overlap>
+std::size_t RTREE_TYPE::Search(const T& check, const std::function<bool(const Data&)>& callback) const {
     std::size_t foundCount = 0;
-    Search(root_, rect, foundCount, callback);
-
-    return foundCount;
-}
-
-RTREE_TEMPLATE
-std::size_t RTREE_TYPE::Search(
-    const std::function<bool(const std::array<Scalar, Dimensions>& min, const std::array<Scalar, Dimensions>& max)>&
-        overlap,
-    const std::function<bool(const Data&)>& callback
-) const {
-    std::size_t foundCount = 0;
-    Search(root_, overlap, foundCount, callback);
+    Search<T, Overlap>(root_, check, foundCount, callback);
     return foundCount;
 }
 
@@ -821,11 +782,11 @@ bool RTREE_TYPE::Overlap(const Rect& rectA, const Rect& rectB) const {
     return true;
 }
 
-// Search in an index tree or subtree for all data rectangles that overlap the argument rectangle.
 RTREE_TEMPLATE
+template<class T, class Overlap>
 bool RTREE_TYPE::Search(
     Node* node,
-    const Rect& rect,
+    const T& check,
     std::size_t& foundCount,
     const std::function<bool(const Data&)>& callback
 ) const {
@@ -834,8 +795,8 @@ bool RTREE_TYPE::Search(
 
     if (IsInternalNode(node)) {  // This is an internal node in the tree
         for (std::uint8_t index = 0; index < node->count; ++index) {
-            if (Overlap(rect, node->branches[index].rect)) {
-                if (!Search(node->branches[index].child, rect, foundCount, callback)) {
+            if (Overlap()(check, node->branches[index].rect.min, node->branches[index].rect.max)) {
+                if (!Search<T, Overlap>(node->branches[index].child, check, foundCount, callback)) {
                     // The callback indicated to stop searching
                     return false;
                 }
@@ -843,43 +804,7 @@ bool RTREE_TYPE::Search(
         }
     } else {  // This is a leaf node
         for (std::uint8_t index = 0; index < node->count; ++index) {
-            if (Overlap(rect, node->branches[index].rect)) {
-                const Data& data = node->branches[index].data;
-                ++foundCount;
-
-                if (callback && !callback(data)) {
-                    return false;  // Don't continue searching
-                }
-            }
-        }
-    }
-
-    return true;  // Continue searching
-}
-
-RTREE_TEMPLATE
-bool RTREE_TYPE::Search(
-    Node* node,
-    const std::function<bool(const std::array<Scalar, Dimensions>& min, const std::array<Scalar, Dimensions>& max)>&
-        overlap,
-    std::size_t& foundCount,
-    const std::function<bool(const Data&)>& callback
-) const {
-    assert(node);
-    assert(node->level >= 0);
-
-    if (IsInternalNode(node)) {  // This is an internal node in the tree
-        for (std::uint8_t index = 0; index < node->count; ++index) {
-            if (overlap(node->branches[index].rect.min, node->branches[index].rect.max)) {
-                if (!Search(node->branches[index].child, overlap, foundCount, callback)) {
-                    // The callback indicated to stop searching
-                    return false;
-                }
-            }
-        }
-    } else {  // This is a leaf node
-        for (std::uint8_t index = 0; index < node->count; ++index) {
-            if (overlap(node->branches[index].rect.min, node->branches[index].rect.max)) {
+            if (Overlap()(check, node->branches[index].rect.min, node->branches[index].rect.max)) {
                 const Data& data = node->branches[index].data;
                 ++foundCount;
 

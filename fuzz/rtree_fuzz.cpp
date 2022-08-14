@@ -12,6 +12,18 @@ struct Rect {
     float l, t, r, b;
 };
 
+struct PointOverlap {
+    bool operator()(const Point& point, const std::array<float, 2>& min, const std::array<float, 2>& max) const {
+        return point.x >= min[0] && point.x < max[0] && point.y >= min[1] && point.y < max[1];
+    }
+};
+
+struct RectOverlap {
+    bool operator()(const Rect& rect, const std::array<float, 2>& min, const std::array<float, 2>& max) const {
+        return rect.l < max[0] && min[0] < rect.r && rect.t < max[1] && min[1] < rect.b;
+    }
+};
+
 class RTreeTest {
  public:
     [[nodiscard]] std::size_t Count() const {
@@ -41,16 +53,16 @@ class RTreeTest {
         assert(data_.size() == tree_.Count());
     }
 
+    static bool Overlap(const Point& point, const Rect& rect) {
+        return point.x >= rect.l && point.x < rect.r && point.y >= rect.t && point.y < rect.b;
+    }
+
     static bool Overlap(const Rect& rectA, const Rect& rectB) {
         float l = std::max(rectA.l, rectB.l);
         float r = std::min(rectA.r, rectB.r);
         float t = std::max(rectA.t, rectB.t);
         float b = std::min(rectA.b, rectB.b);
         return l < r && t < b;
-    }
-
-    static bool Overlap(const Point& point, const Rect& rect) {
-        return point.x >= rect.l && point.x < rect.r && point.y >= rect.t && point.y < rect.b;
     }
 
     void Search(const Point& point) {
@@ -63,15 +75,10 @@ class RTreeTest {
         std::sort(dResult.begin(), dResult.end());
 
         std::vector<int> tResult;
-        tree_.Search(
-            [&point](std::array<float, 2> min, std::array<float, 2> max) {
-                return Overlap(point, Rect {min[0], min[1], max[0], max[1]});
-            },
-            [&tResult](const int& data) {
-                tResult.push_back(data);
-                return true;
-            }
-        );
+        tree_.Search<Point, PointOverlap>(point, [&tResult](const int& data) {
+            tResult.push_back(data);
+            return true;
+        });
         std::sort(tResult.begin(), tResult.end());
 
         assert(dResult == tResult);
@@ -87,9 +94,7 @@ class RTreeTest {
         std::sort(dResult.begin(), dResult.end());
 
         std::vector<int> tResult;
-        std::array<float, 2> min {rect.l, rect.t};
-        std::array<float, 2> max {rect.r, rect.b};
-        tree_.Search(min, max, [&tResult](const int& data) {
+        tree_.Search<Rect, RectOverlap>(rect, [&tResult](const int& data) {
             tResult.push_back(data);
             return true;
         });
